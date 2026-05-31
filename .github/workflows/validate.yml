@@ -1,0 +1,40 @@
+name: validate
+
+# PR 検証。AWS 認証は使わない（cfn-lint はオフライン）。デプロイもしない。
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - "backend/**"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+jobs:
+  cfn-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install cfn-lint
+      - name: Lint CloudFormation templates
+        run: cfn-lint --non-zero-exit-code error infra/template.yaml infra/bootstrap.yaml
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Type-check and build backend
+        working-directory: backend
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build

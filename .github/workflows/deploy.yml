@@ -1,0 +1,73 @@
+name: deploy
+
+# 手動実行のみ（main push などの自動デプロイはしない）。
+on:
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write # OIDC トークン発行に必須
+  contents: read
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: dev # OIDC の sub を repo:...:environment:dev に固定するため必須
+    env:
+      AWS_REGION: ap-northeast-1
+      STACK_NAME: s3-presigned-url-lab
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Build Lambda (esbuild) and zip
+        working-directory: backend
+        run: |
+          npm ci
+          npm run build
+          (cd dist && zip -q ../function.zip handler.js)
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload Lambda artifact to S3
+        run: |
+          KEY="lambda/handler-${{ github.sha }}.zip"
+          aws s3 cp backend/function.zip "s3://${{ vars.ARTIFACT_BUCKET }}/$KEY"
+          echo "LAMBDA_KEY=$KEY" >> "$GITHUB_ENV"
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --region "$AWS_REGION" \
+            --stack-name "$STACK_NAME" \
+            --template-file infra/template.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              LambdaCodeBucket="${{ vars.ARTIFACT_BUCKET }}" \
+              LambdaCodeKey="$LAMBDA_KEY" \
+              AllowedOrigin="http://localhost:5173"
+
+      - name: Show stack outputs
+        run: |
+          {
+            echo '### Stack Outputs'
+            echo '```'
+            aws cloudformation describe-stacks \
+              --region "$AWS_REGION" --stack-name "$STACK_NAME" \
+              --query "Stacks[0].Outputs" --output table
+            echo '```'
+            echo '> ApiBaseUrl を frontend/.env の VITE_API_BASE_URL に設定してください。'
+          } >> "$GITHUB_STEP_SUMMARY"

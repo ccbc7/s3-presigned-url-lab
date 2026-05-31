@@ -40,7 +40,7 @@ aws cloudformation deploy \
   --region "$REGION" \
   --stack-name "$STACK_NAME" \
   --template-file "$ROOT/infra/template.yaml" \
-  --capabilities CAPABILITY_IAM \
+  --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     LambdaCodeBucket="$ARTIFACT_BUCKET" \
     LambdaCodeKey="$KEY" \

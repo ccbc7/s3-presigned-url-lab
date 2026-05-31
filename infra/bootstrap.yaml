@@ -1,0 +1,177 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  s3-presigned-url-lab のデプロイ基盤（初回1回だけ手動で作成する）。
+  GitHub Actions(OIDC) から AssumeRole するための OIDC プロバイダと
+  デプロイ用 IAM ロール、Lambda zip 置き場のアーティファクトバケットを作る。
+  詳細設計: docs/deploy-cicd.md
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Default: ccbc7
+  GitHubRepo:
+    Type: String
+    Default: s3-presigned-url-lab
+  GitHubEnvironment:
+    Type: String
+    Default: dev
+    Description: OIDC の sub に固定する GitHub Environment 名
+  AppStackName:
+    Type: String
+    Default: s3-presigned-url-lab
+    Description: deploy.yml が作るアプリスタック名（権限スコープの接頭辞に使う）
+
+Resources:
+  # =========================================================================
+  # GitHub Actions 用の OIDC プロバイダ。アカウントに1つだけ作れる。
+  # =========================================================================
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        # GitHub Actions OIDC の既知サムプリント。
+        # 現在 AWS は信頼ストアで検証するため値は実質ノーオペだが、フィールドは必須。
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  # =========================================================================
+  # デプロイ用ロール。GitHub の特定 repo + environment からのみ引き受け可能。
+  # =========================================================================
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppStackName}-deploy"
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                # 監査(aud)とサブジェクト(sub)を固定し、他リポジトリ/他環境からの
+                # 引き受けを遮断する。sub は environment 単位で限定。
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubOrg}/${GitHubRepo}:environment:${GitHubEnvironment}"
+      Policies:
+        - PolicyName: deploy-app-stack
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # --- CloudFormation: 対象アプリスタックのみ操作可能 ---
+              - Sid: CloudFormationStack
+                Effect: Allow
+                Action: cloudformation:*
+                Resource:
+                  - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AppStackName}/*"
+              # テンプレ検証系はスタック ARN を取らないので * が必要
+              - Sid: CloudFormationGlobalReads
+                Effect: Allow
+                Action:
+                  - cloudformation:ValidateTemplate
+                  - cloudformation:GetTemplateSummary
+                Resource: "*"
+              # --- S3: アーティファクト/画像バケット（接頭辞で限定）---
+              - Sid: S3Buckets
+                Effect: Allow
+                Action: s3:*
+                Resource:
+                  - !Sub "arn:aws:s3:::${AppStackName}-*"
+                  - !Sub "arn:aws:s3:::${AppStackName}-*/*"
+              # --- CloudFront: リソースレベル権限が弱く * 必須 ---
+              - Sid: CloudFront
+                Effect: Allow
+                Action:
+                  - cloudfront:CreateDistribution
+                  - cloudfront:UpdateDistribution
+                  - cloudfront:DeleteDistribution
+                  - cloudfront:GetDistribution
+                  - cloudfront:GetDistributionConfig
+                  - cloudfront:TagResource
+                  - cloudfront:CreateOriginAccessControl
+                  - cloudfront:UpdateOriginAccessControl
+                  - cloudfront:DeleteOriginAccessControl
+                  - cloudfront:GetOriginAccessControl
+                Resource: "*"
+              # --- Lambda: 関数は接頭辞で限定 ---
+              - Sid: Lambda
+                Effect: Allow
+                Action: lambda:*
+                Resource:
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AppStackName}-*"
+              # --- API Gateway v2（HTTP API）---
+              - Sid: ApiGateway
+                Effect: Allow
+                Action: apigateway:*
+                Resource:
+                  - !Sub "arn:aws:apigateway:${AWS::Region}::/apis"
+                  - !Sub "arn:aws:apigateway:${AWS::Region}::/apis/*"
+              # --- CloudWatch Logs（Lambda ロググループ）---
+              - Sid: Logs
+                Effect: Allow
+                Action: logs:*
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppStackName}-*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppStackName}-*:*"
+              # --- IAM: スタックが作る実行ロールのみ（命名規則で限定）---
+              - Sid: IamManageStackRoles
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:TagRole
+                  - iam:UntagRole
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/${AppStackName}-*"
+              # --- PassRole: Lambda 実行ロールを Lambda に渡すときだけ ---
+              - Sid: IamPassRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/${AppStackName}-*"
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: lambda.amazonaws.com
+
+  # =========================================================================
+  # Lambda zip を置くアーティファクトバケット。完全非公開。
+  # =========================================================================
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AppStackName}-artifacts-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-lambda-zips
+            Status: Enabled
+            Prefix: lambda/
+            ExpirationInDays: 30
+
+Outputs:
+  DeployRoleArn:
+    Description: deploy.yml の role-to-assume（GitHub Environment 変数 AWS_DEPLOY_ROLE_ARN に設定）
+    Value: !GetAtt DeployRole.Arn
+  ArtifactBucketName:
+    Description: Lambda zip 置き場（GitHub Environment 変数 ARTIFACT_BUCKET に設定）
+    Value: !Ref ArtifactBucket
+  OidcProviderArn:
+    Description: GitHub Actions OIDC プロバイダ ARN
+    Value: !Ref GitHubOidcProvider
