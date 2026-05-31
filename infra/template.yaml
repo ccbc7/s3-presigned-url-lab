@@ -94,6 +94,9 @@ Resources:
   PresignFnRole:
     Type: AWS::IAM::Role
     Properties:
+      # bootstrap の DeployRole が iam:PassRole/IAM 操作を role/<stack>-* に限定するため、
+      # 実行ロール名を固定する（このためデプロイは CAPABILITY_NAMED_IAM が必要）。
+      RoleName: !Sub "${AWS::StackName}-lambda-exec"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
