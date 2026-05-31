@@ -1,0 +1,18 @@
+# dependencies
+node_modules/
+
+# build outputs
+dist/
+backend/function.zip
+
+# env
+.env
+.env.local
+.env.*.local
+
+# cloudformation packaging artifacts
+packaged.yaml
+
+# misc
+.DS_Store
+*.log

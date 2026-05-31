@@ -1,0 +1,193 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  S3 署名付きURL 学習ラボ（生のCloudFormation版）。
+  S3(非公開) + CloudFront(OAC) + Lambda(署名URL生成) + HTTP API。
+
+# ---------------------------------------------------------------------------
+# パラメータ: Lambda のコードは S3 に置いた zip を参照する。
+# deploy.sh が zip をアップロードし、その場所をここに渡す。
+# ---------------------------------------------------------------------------
+Parameters:
+  LambdaCodeBucket:
+    Type: String
+    Description: Lambda の zip を置いた S3 バケット名（スタックと同一リージョン）
+  LambdaCodeKey:
+    Type: String
+    Description: Lambda の zip の S3 キー
+  AllowedOrigin:
+    Type: String
+    Default: http://localhost:5173
+    Description: CORS で許可するフロントエンドのオリジン
+
+Resources:
+  # =========================================================================
+  # S3: 画像の保存先。完全非公開（パブリックアクセスは全てブロック）。
+  # =========================================================================
+  ImageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      # ブラウザから署名付きURLで直接 PUT するために CORS を許可する。
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [PUT]
+            AllowedOrigins: [!Ref AllowedOrigin]
+            AllowedHeaders: ["*"]
+            MaxAge: 3000
+
+  # =========================================================================
+  # CloudFront: 表示用CDN。OAC で非公開S3を安全に配信する。
+  # =========================================================================
+  Oac:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "${AWS::StackName} image delivery"
+        DefaultCacheBehavior:
+          TargetOriginId: s3origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          # Managed-CachingOptimized（AWS提供の標準キャッシュポリシー）
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        Origins:
+          - Id: s3origin
+            DomainName: !GetAtt ImageBucket.RegionalDomainName
+            OriginAccessControlId: !Ref Oac
+            S3OriginConfig:
+              OriginAccessIdentity: "" # OAC を使うので OAI は空にする
+
+  # CloudFront(OAC) からの読み取りだけを許可するバケットポリシー。
+  ImageBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ImageBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${ImageBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution.Id}"
+
+  # =========================================================================
+  # Lambda: 署名付きURLを生成する関数（と、その実行ロール）。
+  # =========================================================================
+  PresignFnRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: s3-presign-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # 署名対象の操作だけを uploads/ 配下に限定して許可する。
+              - Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub "${ImageBucket.Arn}/uploads/*"
+
+  PresignFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs22.x
+      Handler: handler.handler
+      Role: !GetAtt PresignFnRole.Arn
+      Timeout: 10
+      MemorySize: 256
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref ImageBucket
+          CDN_DOMAIN: !GetAtt Distribution.DomainName
+
+  # =========================================================================
+  # HTTP API: Lambda を公開するエンドポイント。
+  # =========================================================================
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-api"
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: [!Ref AllowedOrigin]
+        AllowMethods: [GET, POST, OPTIONS]
+        AllowHeaders: [content-type]
+        MaxAge: 3000
+
+  Integration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt PresignFn.Arn
+      PayloadFormatVersion: "2.0"
+
+  UploadRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "POST /upload-url"
+      Target: !Sub "integrations/${Integration}"
+
+  DownloadRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /download-url"
+      Target: !Sub "integrations/${Integration}"
+
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+
+  # HTTP API が Lambda を呼び出す許可。
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PresignFn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*"
+
+Outputs:
+  ApiBaseUrl:
+    Description: フロントの VITE_API_BASE_URL に設定する値
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  CdnDomain:
+    Description: CloudFront の表示用ドメイン
+    Value: !GetAtt Distribution.DomainName
+  BucketName:
+    Description: 画像保存先バケット
+    Value: !Ref ImageBucket
