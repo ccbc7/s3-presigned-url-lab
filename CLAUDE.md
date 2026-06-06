@@ -7,7 +7,7 @@ S3 署名付きURL（presigned URL）の学習ラボ。React(Vite/ローカル) 
 
 - **デプロイ先は dev アカウント `027204872496` / `ap-northeast-1` のみ。prod には絶対に出さない。**
 - **デプロイは GitHub Actions(OIDC) 経由が正。** `Actions → deploy → Run workflow`（または `gh workflow run deploy.yml --ref main`）。
-  `infra/deploy.sh` をローカルで叩く運用ではない（OIDC でアクセスキーを置かない設計）。
+  ローカルからスクリプトで直接デプロイする運用ではない（OIDC でアクセスキーを置かない設計）。
 - **フロントは AWS にホスティングしない。** 手元の `http://localhost:5173`(Vite dev) で動かすのが設計どおり。公開URLが無いのが正しい。
 - **`frontend/.env` は手動設定・コミットしない**（gitignore 済み）。`VITE_API_BASE_URL` に API の URL を貼る。
 - Route53 / 独自ドメインは設計外（不要）。

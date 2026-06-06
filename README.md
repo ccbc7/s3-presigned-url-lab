@@ -42,7 +42,7 @@ S3 の **署名付きURL（presigned URL）** を使った画像アップロー�
 ├─ docs/architecture.md   ← 仕組みの詳しい解説（読み物）
 ├─ infra/
 │  ├─ template.yaml       ← 生CloudFormation（S3 / CloudFront / Lambda / HTTP API）
-│  └─ deploy.sh           ← ビルド→S3アップロード→デプロイ の一括スクリプト
+│  └─ bootstrap.yaml      ← OIDC / DeployRole / アーティファクトバケット（初回1回だけ）
 ├─ backend/
 │  └─ src/handler.ts      ← 署名付きURLを生成する Lambda
 └─ frontend/
@@ -67,33 +67,22 @@ S3 の **署名付きURL（presigned URL）** を使った画像アップロー�
 
 ## セットアップ手順
 
-### 0. AWS 認証情報を設定（未設定なら必須）
+### 1. バックエンドをデプロイ（GitHub Actions / OIDC）
 
-```bash
-aws configure   # Access Key / Secret / region(ap-northeast-1) を入力
-aws sts get-caller-identity   # 確認
-```
+デプロイは GitHub Actions 経由で行う設計です（ローカルに AWS アクセスキーを置かない）。
 
-### 1. アーティファクト用バケットを作成（初回のみ）
+- **初回のみ**: `infra/bootstrap.yaml` を手動で1回デプロイし、OIDC ロール・アーティファクト
+  バケットを作成（実施済み）。
+- **通常運用**: コードを main に入れたあと **Actions → deploy → Run workflow**
+  （または `gh workflow run deploy.yml --ref main`）を実行するだけ。
 
-Lambda の zip を置く置き場。名前は世界で一意にする（アカウントIDを混ぜると安全）。
-
-```bash
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-aws s3 mb "s3://my-presign-artifacts-$ACCOUNT_ID" --region ap-northeast-1
-```
-
-### 2. デプロイ
-
-```bash
-cd infra
-ARTIFACT_BUCKET="my-presign-artifacts-$ACCOUNT_ID" ./deploy.sh
-```
-
-完了すると `Outputs`（`ApiBaseUrl` / `CdnDomain` / `BucketName`）が表示されます。
+完了するとジョブのサマリに `Outputs`（`ApiBaseUrl` / `CdnDomain` / `BucketName`）が表示されます。
 ※ CloudFront は初回のみ展開に 5〜15 分ほどかかります。
 
-### 3. フロントを設定して起動
+> 設計と実施記録の詳細は [docs/deploy-cicd.md](docs/deploy-cicd.md) /
+> [docs/deploy-progress.md](docs/deploy-progress.md) を参照。
+
+### 2. フロントを設定して起動
 
 ```bash
 cd ../frontend

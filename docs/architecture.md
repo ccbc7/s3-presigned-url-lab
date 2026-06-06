@@ -109,7 +109,7 @@ S3 を直接公開（バケットをパブリックに）してもURLは作れ�
 ### Lambda コードのデプロイ方法（SAMとの違い）
 
 SAM なら `sam build` が裏でやってくれる部分を、生 CloudFormation では自分で行います。
-[deploy.sh](../infra/deploy.sh) の流れ:
+デプロイ（[deploy ワークフロー](../.github/workflows/deploy.yml)）の流れ:
 
 1. `esbuild` で `handler.ts` を**単一ファイルにバンドル**（依存も同梱）→ `dist/handler.js`
 2. zip に固める
