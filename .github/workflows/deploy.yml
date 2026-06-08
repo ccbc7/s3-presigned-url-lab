@@ -58,7 +58,9 @@ jobs:
             --parameter-overrides \
               LambdaCodeBucket="${{ vars.ARTIFACT_BUCKET }}" \
               LambdaCodeKey="$LAMBDA_KEY" \
-              AllowedOrigin="http://localhost:5173"
+              AllowedOrigin="http://localhost:5173" \
+              AlternateDomainName="${{ vars.CDN_ALTERNATE_DOMAIN }}" \
+              AcmCertificateArn="${{ vars.CDN_ACM_CERT_ARN }}"
 
       - name: Show stack outputs
         run: |

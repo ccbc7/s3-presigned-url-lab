@@ -18,6 +18,22 @@ Parameters:
     Type: String
     Default: http://localhost:5173
     Description: CORS で許可するフロントエンドのオリジン
+  AlternateDomainName:
+    Type: String
+    Default: ""
+    Description: >
+      （任意）CloudFront に付ける独自ドメイン（例: images-dev.example.com）。
+      空のときはデフォルトの *.cloudfront.net を使う。
+  AcmCertificateArn:
+    Type: String
+    Default: ""
+    Description: >
+      （任意）CloudFront 用 ACM 証明書の ARN（必ず us-east-1 で発行したもの）。
+      AlternateDomainName を指定するときに必須。
+
+Conditions:
+  # 独自ドメインを使うか。AlternateDomainName が空でなければ有効。
+  HasCustomDomain: !Not [!Equals [!Ref AlternateDomainName, ""]]
 
 Resources:
   # =========================================================================
@@ -57,6 +73,18 @@ Resources:
       DistributionConfig:
         Enabled: true
         Comment: !Sub "${AWS::StackName} image delivery"
+        # 独自ドメインを使うときだけ Aliases を設定（無ければ *.cloudfront.net のまま）。
+        Aliases: !If
+          - HasCustomDomain
+          - [!Ref AlternateDomainName]
+          - !Ref AWS::NoValue
+        # 独自ドメインのときは us-east-1 の ACM 証明書、無ければ CloudFront デフォルト証明書。
+        ViewerCertificate: !If
+          - HasCustomDomain
+          - AcmCertificateArn: !Ref AcmCertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
         DefaultCacheBehavior:
           TargetOriginId: s3origin
           ViewerProtocolPolicy: redirect-to-https
@@ -130,7 +158,11 @@ Resources:
       Environment:
         Variables:
           BUCKET_NAME: !Ref ImageBucket
-          CDN_DOMAIN: !GetAtt Distribution.DomainName
+          # 独自ドメインがあればそれを、無ければ *.cloudfront.net を cdnUrl のベースに使う。
+          CDN_DOMAIN: !If
+            - HasCustomDomain
+            - !Ref AlternateDomainName
+            - !GetAtt Distribution.DomainName
 
   # =========================================================================
   # HTTP API: Lambda を公開するエンドポイント。

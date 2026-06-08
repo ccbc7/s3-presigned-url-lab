@@ -18,6 +18,19 @@ dev アカウントの CloudFront Distribution に向けることです。
 images-dev.example.com -> d3bhtum71uj3w1.cloudfront.net
 ```
 
+## 実施状況（2026-06-07 記録）
+
+委任方式で構築済み（**prod への書き込みは委任 NS 1件のみ**、既存レコードは不変更）。
+
+- 委任ゾーン: `dev.hiro-lab-linux.com`（dev アカウントに新規 Hosted Zone を作成）
+- prod `hiro-lab-linux.com` に上記サブドメインの **NS 委任を1件追加**
+- CloudFront 用ホスト名: `images.dev.hiro-lab-linux.com`
+- ACM 証明書（us-east-1 / dev）: **ISSUED**。検証 CNAME・Alias は委任先（dev ゾーン）で完結
+- CloudFront への Aliases / 証明書反映は deploy ワークフローで実施
+  （GitHub vars `CDN_ALTERNATE_DOMAIN` / `CDN_ACM_CERT_ARN`）
+
+以後 `dev.hiro-lab-linux.com` 配下のホストは prod を触らず dev 側だけで増やせる。
+
 ## 方針
 
 prod の Hosted Zone は DNS 管理だけに使い、実際の配信先は dev CloudFront のままにします。
