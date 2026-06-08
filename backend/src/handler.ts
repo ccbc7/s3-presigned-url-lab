@@ -33,6 +33,9 @@ const CF_SIGNED_PREFIX = process.env.CF_SIGNED_PREFIX ?? "private/";
 /** 署名付きURLの有効期限（秒）。短いほど安全。 */
 const EXPIRES_IN = 300;
 
+/** CloudFront 署名付きURL（③）の有効期限（秒）。失効デモ用に短くしている。 */
+const CF_EXPIRES_IN = 10;
+
 /** 許可する画像 Content-Type と拡張子の対応。許可リスト方式で安全に。 */
 const EXT_BY_CONTENT_TYPE: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -147,7 +150,7 @@ async function createCfSignedUrl(
 
   const privateKey = await getCfPrivateKey();
   const url = `https://${CDN_DOMAIN}/${key}`;
-  const dateLessThan = new Date(Date.now() + EXPIRES_IN * 1000).toISOString();
+  const dateLessThan = new Date(Date.now() + CF_EXPIRES_IN * 1000).toISOString();
 
   // CloudFront の鍵で署名（S3 ではなく CloudFront に対する署名）。
   const signedUrl = getCloudFrontSignedUrl({
@@ -157,5 +160,5 @@ async function createCfSignedUrl(
     dateLessThan,
   });
 
-  return json(200, { signedUrl, key, expiresIn: EXPIRES_IN });
+  return json(200, { signedUrl, key, expiresIn: CF_EXPIRES_IN });
 }
