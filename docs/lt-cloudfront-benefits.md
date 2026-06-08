@@ -76,6 +76,41 @@ table {
   font-size: 24px;
 }
 
+.meta-flow {
+  display: grid;
+  grid-template-columns: 1fr 120px 1fr;
+  align-items: center;
+  gap: 24px;
+  margin: 28px 0;
+  max-width: 900px;
+}
+
+.store-box {
+  border: 2px solid #d9e1e5;
+  padding: 22px 26px;
+  min-height: 210px;
+}
+
+.store-box strong {
+  color: var(--accent);
+  display: block;
+  font-size: 32px;
+  margin-bottom: 14px;
+}
+
+.store-box ul {
+  font-size: 24px;
+  margin: 0;
+  padding-left: 24px;
+}
+
+.flow-arrow {
+  color: var(--accent);
+  font-size: 42px;
+  font-weight: 700;
+  text-align: center;
+}
+
 section::marker {
   color: var(--accent);
 }
@@ -129,9 +164,6 @@ section.title p {
 
 # なぜDBに画像を入れないのか
 
-DBに画像データを入れること自体はできます。
-
-ただ、画像はサイズが大きくなりやすいです。
 
 画像をDBに入れると、次のような問題が出やすくなります。
 
@@ -147,19 +179,24 @@ DBに画像データを入れること自体はできます。
 DBには画像本体ではなく、
 画像に関する情報だけを保存します。
 
-```mermaid
-flowchart LR
-  DB[(DB)]
-  S3[(S3)]
-
-  DB --> userId[userId]
-  DB --> imageKey[imageKey]
-  DB --> fileName[fileName]
-  DB --> createdAt[createdAt]
-
-  imageKey --> object[uploads/uuid.jpg]
-  S3 --> object
-```
+<div class="meta-flow">
+  <div class="store-box">
+    <strong>DB</strong>
+    <ul>
+      <li>userId</li>
+      <li>imageKey</li>
+      <li>fileName</li>
+      <li>createdAt</li>
+    </ul>
+  </div>
+  <div class="flow-arrow">→</div>
+  <div class="store-box">
+    <strong>S3</strong>
+    <ul>
+      <li>uploads/uuid.jpg</li>
+    </ul>
+  </div>
+</div>
 
 DBは検索や管理、
 S3は画像ファイル本体の保存を担当します。
@@ -185,21 +222,17 @@ APIやLambdaが画像本体を受け取らないので、
 
 # 今回の構成
 
-```text
-React
-  |
-  | 1. アップロード用URLを取得
-  v
-API Gateway -> Lambda
-                |
-                | 2. S3署名付きURLを発行
-                v
-React -------> S3
-  |
-  | 3. 画像表示
-  v
-CloudFront -> S3
-```
+1. React → API Gateway / Lambda
+   - アップロード用の署名付きURLをリクエスト
+   - `uploadUrl` と `cdnUrl` を受け取る
+
+2. React → S3
+   - `uploadUrl` に画像をPUT
+   - S3の非公開バケットに画像を保存
+
+3. React → CloudFront
+   - `cdnUrl` で画像を表示
+   - CloudFrontがS3から画像を取得
 
 アップロードはS3署名付きURL、
 表示はCloudFront URLを使います。
