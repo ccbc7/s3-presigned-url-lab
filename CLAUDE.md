@@ -5,12 +5,12 @@ S3 署名付きURL（presigned URL）の学習ラボ。React(Vite/ローカル) 
 
 ## 重要な運用ルール（必読）
 
-- **デプロイ先は dev アカウント `027204872496` / `ap-northeast-1` のみ。prod には絶対に出さない。**
+- **アプリのデプロイ先は dev アカウント `027204872496` / `ap-northeast-1` のみ。prod にアプリリソース（S3/CloudFront/Lambda/API）は出さない。** 唯一の例外として、prod Route53 `hiro-lab-linux.com` に `dev.hiro-lab-linux.com` の委任 NS レコードのみ追加済み（[docs/custom-domain-plan.md](docs/custom-domain-plan.md)）。
 - **デプロイは GitHub Actions(OIDC) 経由が正。** `Actions → deploy → Run workflow`（または `gh workflow run deploy.yml --ref main`）。
   ローカルからスクリプトで直接デプロイする運用ではない（OIDC でアクセスキーを置かない設計）。
 - **フロントは AWS にホスティングしない。** 手元の `http://localhost:5173`(Vite dev) で動かすのが設計どおり。公開URLが無いのが正しい。
 - **`frontend/.env` は手動設定・コミットしない**（gitignore 済み）。`VITE_API_BASE_URL` に API の URL を貼る。
-- Route53 / 独自ドメインは設計外（不要）。
+- 独自ドメイン: dev CloudFront をサブドメイン委任で `images.dev.hiro-lab-linux.com` 配信（実施済み。詳細 [docs/custom-domain-plan.md](docs/custom-domain-plan.md)）。委任先ゾーンは dev、prod 側は委任 NS 1件のみ。
 
 ## コマンド
 
