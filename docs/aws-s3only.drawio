@@ -1,0 +1,40 @@
+<mxfile host="65bd71144e">
+    <diagram name="s3only" id="s3only-flow">
+        <mxGraphModel dx="986" dy="841" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="grp" value="AWS Cloud（S3のみ・最小構成 / dev 027204872496）" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=0;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_aws_cloud_alt;strokeColor=#232F3E;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#232F3E;dashed=0;" parent="1" vertex="1">
+                    <mxGeometry x="110" y="250" width="780" height="320" as="geometry"/>
+                </mxCell>
+                <mxCell id="apigw" value="API Gateway (HTTP API)" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=#ffffff;fillColor=#232F3E;dashed=0;verticalLabelPosition=middle;verticalAlign=bottom;align=center;html=1;whiteSpace=wrap;fontSize=10;fontStyle=1;spacing=3;shape=mxgraph.aws4.productIcon;prIcon=mxgraph.aws4.api_gateway;" parent="grp" vertex="1">
+                    <mxGeometry x="94" y="70" width="80" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="lambda" value="AWS Lambda（署名URL生成）" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=#ffffff;fillColor=#232F3E;dashed=0;verticalLabelPosition=middle;verticalAlign=bottom;align=center;html=1;whiteSpace=wrap;fontSize=10;fontStyle=1;spacing=3;shape=mxgraph.aws4.productIcon;prIcon=mxgraph.aws4.lambda;" parent="grp" vertex="1">
+                    <mxGeometry x="450" y="70" width="80" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="s3" value="Amazon S3（公開読み取り・uploads/）" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=#ffffff;fillColor=#232F3E;dashed=0;verticalLabelPosition=middle;verticalAlign=bottom;align=center;html=1;whiteSpace=wrap;fontSize=10;fontStyle=1;spacing=3;shape=mxgraph.aws4.productIcon;prIcon=mxgraph.aws4.s3;" parent="grp" vertex="1">
+                    <mxGeometry x="610" y="150" width="80" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="pc" value="ローカルPC（React/Vite）" style="sketch=0;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;fillColor=#505050;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;outlineConnect=0;align=center;shape=mxgraph.office.devices.mac_client;" parent="1" vertex="1">
+                    <mxGeometry x="205" y="50" width="78" height="58" as="geometry"/>
+                </mxCell>
+                <mxCell id="note" value="S3 を公開（パブリック読み取り）し、オブジェクトURLで直接表示する最小構成。&#xa;CloudFront / OAC / 独自ドメインなし。&#xa;※ 比較用ベースライン。本ラボの既定構成（非公開S3 + CloudFront）ではない。" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;fontSize=10;fontColor=#7A3B00;strokeColor=#E6A23C;fillColor=#FCF3E3;spacingLeft=8;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="120" y="600" width="430" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" value="① POST /upload-url" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=10;labelBackgroundColor=#ffffff;" parent="1" source="pc" target="apigw" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2" value="proxy" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=10;labelBackgroundColor=#ffffff;" parent="1" source="apigw" target="lambda" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e3" value="③ PUT（S3署名URL）" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=10;labelBackgroundColor=#ffffff;dashed=1;exitX=1;exitY=0.4;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" parent="1" source="pc" target="s3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e4" value="④ 表示（S3オブジェクトURL直・署名なし）" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=10;labelBackgroundColor=#ffffff;dashed=1;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" parent="1" source="pc" target="s3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

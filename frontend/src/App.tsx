@@ -37,6 +37,16 @@ const outlineBtn: CSSProperties = {
   cursor: "pointer",
 };
 
+const segBtn = (active: boolean): CSSProperties => ({
+  border: "none",
+  padding: "6px 16px",
+  borderRadius: radius.md,
+  fontWeight: 600,
+  cursor: "pointer",
+  background: active ? colors.primary : "transparent",
+  color: active ? colors.surface : colors.text,
+});
+
 const link: CSSProperties = { color: colors.primary, wordBreak: "break-all" };
 const h2: CSSProperties = { color: colors.ink, fontSize: 18, marginTop: 0 };
 const img: CSSProperties = {
@@ -118,7 +128,7 @@ export function App() {
           borderBottom: `4px solid ${colors.accent}`,
         }}
       >
-        <div style={{ maxWidth: 720, margin: "0 auto", padding: "18px 16px" }}>
+        <div style={{ maxWidth: 720, margin: "0 auto", padding: "16px" }}>
           <h1 style={{ margin: 0, color: colors.surface, fontSize: 20 }}>
             S3 署名付きURL ラボ
           </h1>
@@ -126,6 +136,26 @@ export function App() {
       </header>
 
       <main style={{ maxWidth: 720, margin: "24px auto", padding: "0 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <span style={{ color: colors.muted, fontSize: 13 }}>保存モード</span>
+          <div
+            style={{
+              display: "inline-flex",
+              gap: 4,
+              background: colors.surface,
+              border: `1px solid ${colors.border}`,
+              padding: 4,
+              borderRadius: radius.md,
+            }}
+          >
+            <button style={segBtn(!privateMode)} onClick={() => setPrivateMode(false)}>
+              public
+            </button>
+            <button style={segBtn(privateMode)} onClick={() => setPrivateMode(true)}>
+              private
+            </button>
+          </div>
+        </div>
         <p>画像を選んでアップロードすると、CloudFront 経由で表示されます。</p>
 
         <div style={card}>
@@ -144,16 +174,6 @@ export function App() {
             </button>
           </div>
 
-          <label
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 12 }}
-          >
-            <input
-              type="checkbox"
-              checked={privateMode}
-              onChange={(e) => setPrivateMode(e.target.checked)}
-            />
-            private で保存（CloudFront 署名必須の <code>private/</code> 配下へ）
-          </label>
 
           <p style={{ marginBottom: 0 }}>
             状態:{" "}
