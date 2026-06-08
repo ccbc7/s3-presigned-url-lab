@@ -1,5 +1,10 @@
 import { useState, type CSSProperties } from "react";
-import { requestUploadUrl, uploadToS3, requestDownloadUrl } from "./api";
+import {
+  requestUploadUrl,
+  uploadToS3,
+  requestDownloadUrl,
+  requestCfSignedUrl,
+} from "./api";
 import { colors, radius } from "./theme";
 
 type Status = "idle" | "requesting" | "uploading" | "done" | "error";
@@ -34,27 +39,39 @@ const outlineBtn: CSSProperties = {
 
 const link: CSSProperties = { color: colors.primary, wordBreak: "break-all" };
 const h2: CSSProperties = { color: colors.ink, fontSize: 18, marginTop: 0 };
+const img: CSSProperties = {
+  maxWidth: "100%",
+  marginTop: 8,
+  borderRadius: radius.md,
+  border: `1px solid ${colors.border}`,
+};
 
 export function App() {
   const [file, setFile] = useState<File | null>(null);
+  const [privateMode, setPrivateMode] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string>("");
   const [cdnUrl, setCdnUrl] = useState<string>("");
   const [key, setKey] = useState<string>("");
   const [signedUrl, setSignedUrl] = useState<string>("");
+  const [cfSignedUrl, setCfSignedUrl] = useState<string>("");
 
   async function handleUpload() {
     if (!file) return;
     setError("");
     setSignedUrl("");
+    setCfSignedUrl("");
     try {
-      // ① 署名付きURLをもらう
+      // ① 署名付きURLをもらう（private なら CloudFront 署名必須の経路へ）
       setStatus("requesting");
-      const result = await requestUploadUrl(file.type);
+      const result = await requestUploadUrl(
+        file.type,
+        privateMode ? "private" : "public"
+      );
       // ③ S3 へ直接アップロード
       setStatus("uploading");
       await uploadToS3(result.uploadUrl, file);
-      // ④ 表示用URL（CloudFront）で表示
+      // ④ 表示用URL（CloudFront）
       setCdnUrl(result.cdnUrl);
       setKey(result.key);
       setStatus("done");
@@ -67,14 +84,23 @@ export function App() {
   async function handleSignedDownload() {
     if (!key) return;
     try {
-      const url = await requestDownloadUrl(key);
-      setSignedUrl(url);
+      setSignedUrl(await requestDownloadUrl(key));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleCfSigned() {
+    if (!key) return;
+    try {
+      setCfSignedUrl(await requestCfSignedUrl(key));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   }
 
   const busy = status === "uploading" || status === "requesting";
+  const isPrivate = key.startsWith("private/");
 
   return (
     <div
@@ -118,6 +144,17 @@ export function App() {
             </button>
           </div>
 
+          <label
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 12 }}
+          >
+            <input
+              type="checkbox"
+              checked={privateMode}
+              onChange={(e) => setPrivateMode(e.target.checked)}
+            />
+            private で保存（CloudFront 署名必須の <code>private/</code> 配下へ）
+          </label>
+
           <p style={{ marginBottom: 0 }}>
             状態:{" "}
             <strong style={{ color: status === "error" ? colors.danger : colors.ink }}>
@@ -129,35 +166,56 @@ export function App() {
 
         {status === "done" && (
           <section style={{ ...card, marginTop: 16 }}>
-            <h2 style={h2}>① 表示用URL（CloudFront・署名なし）</h2>
+            <h2 style={h2}>
+              ① CloudFront 公開URL（署名なし）
+              {isPrivate && "（このキーは署名必須 → 403）"}
+            </h2>
             <a href={cdnUrl} target="_blank" rel="noreferrer" style={link}>
               {cdnUrl}
             </a>
-            <div>
-              <img
-                src={cdnUrl}
-                alt="アップロードした画像"
-                style={{
-                  maxWidth: "100%",
-                  marginTop: 8,
-                  borderRadius: radius.md,
-                  border: `1px solid ${colors.border}`,
-                }}
-              />
-            </div>
+            {isPrivate ? (
+              <p style={{ color: colors.muted, margin: "8px 0 0" }}>
+                private/ は CloudFront 側で署名必須なので、この公開URLは 403。下の③の署名付きURLで表示できます。
+              </p>
+            ) : (
+              <div>
+                <img src={cdnUrl} alt="アップロードした画像" style={img} />
+              </div>
+            )}
 
             <h2 style={{ ...h2, marginTop: 24 }}>
-              ② 署名付きGET URL（期限付き・非公開）
+              ② S3 署名付きGET URL（期限付き・S3直）
             </h2>
             <button onClick={handleSignedDownload} style={outlineBtn}>
-              署名付きGET URLを取得
+              S3 署名付きGET URLを取得
             </button>
             {signedUrl && (
               <p>
                 <a href={signedUrl} target="_blank" rel="noreferrer" style={link}>
-                  期限付きダウンロードリンクを開く
+                  {signedUrl}
                 </a>
               </p>
+            )}
+
+            {isPrivate && (
+              <>
+                <h2 style={{ ...h2, marginTop: 24 }}>
+                  ③ CloudFront 署名付きURL（期限付き・CDN経由）
+                </h2>
+                <button onClick={handleCfSigned} style={outlineBtn}>
+                  CloudFront 署名付きURLを取得
+                </button>
+                {cfSignedUrl && (
+                  <>
+                    <p>
+                      <a href={cfSignedUrl} target="_blank" rel="noreferrer" style={link}>
+                        {cfSignedUrl}
+                      </a>
+                    </p>
+                    <img src={cfSignedUrl} alt="CloudFront署名で表示" style={img} />
+                  </>
+                )}
+              </>
             )}
           </section>
         )}

@@ -30,10 +30,26 @@ Parameters:
     Description: >
       （任意）CloudFront 用 ACM 証明書の ARN（必ず us-east-1 で発行したもの）。
       AlternateDomainName を指定するときに必須。
+  CloudFrontKeyGroupId:
+    Type: String
+    Default: ""
+    Description: >
+      （任意）CloudFront 署名付きURL用の KeyGroup ID。
+      設定すると private/* 経路を署名必須にする。
+  CloudFrontKeyPairId:
+    Type: String
+    Default: ""
+    Description: （任意）CloudFront PublicKey の ID（= 署名時の Key-Pair-Id）。
+  CfPrivateKeyParam:
+    Type: String
+    Default: /s3-presign/cf-private-key
+    Description: CloudFront 署名用の秘密鍵を置いた SSM SecureString のパラメータ名。
 
 Conditions:
   # 独自ドメインを使うか。AlternateDomainName が空でなければ有効。
   HasCustomDomain: !Not [!Equals [!Ref AlternateDomainName, ""]]
+  # CloudFront 署名付きURL（private/* を署名必須）を使うか。
+  HasSignedUrls: !Not [!Equals [!Ref CloudFrontKeyGroupId, ""]]
 
 Resources:
   # =========================================================================
@@ -91,6 +107,18 @@ Resources:
           AllowedMethods: [GET, HEAD]
           # Managed-CachingOptimized（AWS提供の標準キャッシュポリシー）
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        # 署名付きURL用: private/* は TrustedKeyGroups により署名必須（無署名は 403）。
+        # HasSignedUrls のときだけ追加（既存の公開 uploads/* は default behavior のまま）。
+        CacheBehaviors: !If
+          - HasSignedUrls
+          - - PathPattern: "private/*"
+              TargetOriginId: s3origin
+              ViewerProtocolPolicy: redirect-to-https
+              AllowedMethods: [GET, HEAD]
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+              TrustedKeyGroups:
+                - !Ref CloudFrontKeyGroupId
+          - !Ref AWS::NoValue
         Origins:
           - Id: s3origin
             DomainName: !GetAtt ImageBucket.RegionalDomainName
@@ -139,10 +167,22 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              # 署名対象の操作だけを uploads/ 配下に限定して許可する。
+              # 署名対象の操作を uploads/（公開）と private/（CloudFront署名）配下に限定して許可。
               - Effect: Allow
                 Action: [s3:PutObject, s3:GetObject]
-                Resource: !Sub "${ImageBucket.Arn}/uploads/*"
+                Resource:
+                  - !Sub "${ImageBucket.Arn}/uploads/*"
+                  - !Sub "${ImageBucket.Arn}/private/*"
+              # CloudFront 署名用の秘密鍵を SSM から復号して読む（復号は SSM 経由のみ許可）。
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${CfPrivateKeyParam}"
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
 
   PresignFn:
     Type: AWS::Lambda::Function
@@ -163,6 +203,10 @@ Resources:
             - HasCustomDomain
             - !Ref AlternateDomainName
             - !GetAtt Distribution.DomainName
+          # CloudFront 署名付きURL用（未設定なら署名エンドポイントは無効）。
+          CF_KEY_PAIR_ID: !Ref CloudFrontKeyPairId
+          CF_PRIVATE_KEY_PARAM: !Ref CfPrivateKeyParam
+          CF_SIGNED_PREFIX: "private/"
 
   # =========================================================================
   # HTTP API: Lambda を公開するエンドポイント。
@@ -198,6 +242,13 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: "GET /download-url"
+      Target: !Sub "integrations/${Integration}"
+
+  CfSignedRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /cf-signed-url"
       Target: !Sub "integrations/${Integration}"
 
   Stage:

@@ -60,7 +60,9 @@ jobs:
               LambdaCodeKey="$LAMBDA_KEY" \
               AllowedOrigin="http://localhost:5173" \
               AlternateDomainName="${{ vars.CDN_ALTERNATE_DOMAIN }}" \
-              AcmCertificateArn="${{ vars.CDN_ACM_CERT_ARN }}"
+              AcmCertificateArn="${{ vars.CDN_ACM_CERT_ARN }}" \
+              CloudFrontKeyGroupId="${{ vars.CDN_KEY_GROUP_ID }}" \
+              CloudFrontKeyPairId="${{ vars.CDN_KEY_PAIR_ID }}"
 
       - name: Show stack outputs
         run: |

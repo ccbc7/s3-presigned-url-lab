@@ -9,13 +9,15 @@ export type UploadUrlResponse = {
 };
 
 // ① API に「アップロード用の署名付きURL」を要求する。
+//    scope="private" にすると CloudFront 署名必須の private/ 配下に保存される。
 export async function requestUploadUrl(
-  contentType: string
+  contentType: string,
+  scope: "public" | "private" = "public"
 ): Promise<UploadUrlResponse> {
   const res = await fetch(`${API_BASE}/upload-url`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ contentType }),
+    body: JSON.stringify({ contentType, scope }),
   });
   if (!res.ok) {
     throw new Error(`upload-url の取得に失敗: ${res.status} ${await res.text()}`);
@@ -36,7 +38,7 @@ export async function uploadToS3(uploadUrl: string, file: File): Promise<void> {
   }
 }
 
-// （任意）非公開ダウンロード用の署名付き GET URL を要求する。
+// （任意）非公開ダウンロード用の S3 署名付き GET URL を要求する（S3 直行）。
 export async function requestDownloadUrl(key: string): Promise<string> {
   const res = await fetch(
     `${API_BASE}/download-url?key=${encodeURIComponent(key)}`
@@ -46,4 +48,16 @@ export async function requestDownloadUrl(key: string): Promise<string> {
   }
   const data = (await res.json()) as { downloadUrl: string };
   return data.downloadUrl;
+}
+
+// （任意）CloudFront 署名付きURL（期限付き・CDN経由）を要求する。private/ のキー専用。
+export async function requestCfSignedUrl(key: string): Promise<string> {
+  const res = await fetch(
+    `${API_BASE}/cf-signed-url?key=${encodeURIComponent(key)}`
+  );
+  if (!res.ok) {
+    throw new Error(`cf-signed-url の取得に失敗: ${res.status} ${await res.text()}`);
+  }
+  const data = (await res.json()) as { signedUrl: string };
+  return data.signedUrl;
 }
