@@ -9,6 +9,8 @@ S3 の **署名付きURL（presigned URL）** を使った画像アップロー�
 - **IaC**: 生の CloudFormation（`infra/template.yaml`）
 
 > なぜこの構成？ → 設計判断の詳細は [docs/architecture.md](docs/architecture.md) を参照。
+> 独自ドメインを dev CloudFront に紐づける計画は
+> [docs/custom-domain-plan.md](docs/custom-domain-plan.md) にまとめています。
 
 ---
 
