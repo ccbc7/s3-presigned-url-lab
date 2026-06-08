@@ -85,12 +85,11 @@ S3 の **署名付きURL（presigned URL）** を使った画像アップロー�
 ### 2. フロントを設定して起動
 
 ```bash
-cd ../frontend
-cp .env.example .env
-# .env の VITE_API_BASE_URL に Outputs の ApiBaseUrl を貼り付け
-npm install
-npm run dev   # http://localhost:5173
+make up       # http://localhost:5173
 ```
+
+初回は `frontend/.env` がなければ自動で作成されます。
+画像アップロードまで試す場合は、`.env` の `VITE_API_BASE_URL` に Outputs の ApiBaseUrl を貼り付けます。
 
 ブラウザで画像を選んで「アップロード」→ CloudFront 経由で表示されれば成功です。
 
